@@ -907,12 +907,6 @@ export default function App() {
             onClick={() => setActiveTab('trends')} 
           />
           <NavItem 
-            icon={<Clock size={20} />} 
-            label="AI Intelligence" 
-            active={activeTab === 'history'} 
-            onClick={() => setActiveTab('history')} 
-          />
-          <NavItem 
             icon={<Globe size={20} />} 
             label="Currencies" 
             active={activeTab === 'currencies'} 
@@ -1146,18 +1140,6 @@ export default function App() {
 
             {activeTab === "goals" && (
               <motion.div
-                key="goals"
-                initial={false}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="space-y-6"
-              >
-                <GoalPlanner user={user} />
-              </motion.div>
-            )}
-
-            {activeTab === 'goals' && (
-              <motion.div 
                 key="goals"
                 initial={false}
                 animate={{ opacity: 1, x: 0 }}
