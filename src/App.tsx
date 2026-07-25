@@ -48,7 +48,8 @@ import {
   MessageSquare,
   LineChart,
   Globe,
-  Shield
+  Shield,
+  Wallet
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -905,12 +906,6 @@ export default function App() {
             label="Trends" 
             active={activeTab === 'trends'} 
             onClick={() => setActiveTab('trends')} 
-          />
-          <NavItem 
-            icon={<Clock size={20} />} 
-            label="AI Intelligence" 
-            active={activeTab === 'history'} 
-            onClick={() => setActiveTab('history')} 
           />
           <NavItem 
             icon={<Globe size={20} />} 
