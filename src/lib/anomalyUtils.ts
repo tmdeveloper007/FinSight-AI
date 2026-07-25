@@ -292,10 +292,10 @@ export async function runAnomalyDetection(
   return saved;
 }
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number, currencyCode: string = "INR"): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "INR",
+    currency: currencyCode,
     minimumFractionDigits: 0,
   }).format(amount);
 }
