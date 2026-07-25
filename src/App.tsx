@@ -48,7 +48,8 @@ import {
   MessageSquare,
   LineChart,
   Globe,
-  Shield
+  Shield,
+  Wallet
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -186,6 +187,7 @@ import { ChallengesDashboard } from './components/challenges/ChallengesDashboard
 import { TaxEstimation } from './components/tax/TaxEstimation';
 import { EmergencyFundPlanner } from './components/emergency/EmergencyFundPlanner';
 import { HealthScoreDashboard } from './components/health/HealthScoreDashboard';
+import { CashFlowDashboard } from './components/cashflow/CashFlowDashboard';
 import { ChatAssistant } from './components/chat/ChatAssistant';
 import { ForecastComparison } from './components/forecast/ForecastComparison';
 import { PortfolioTracker } from './components/portfolio/PortfolioTracker';
@@ -905,12 +907,6 @@ export default function App() {
             label="Trends" 
             active={activeTab === 'trends'} 
             onClick={() => setActiveTab('trends')} 
-          />
-          <NavItem 
-            icon={<Clock size={20} />} 
-            label="AI Intelligence" 
-            active={activeTab === 'history'} 
-            onClick={() => setActiveTab('history')} 
           />
           <NavItem 
             icon={<Globe size={20} />} 
