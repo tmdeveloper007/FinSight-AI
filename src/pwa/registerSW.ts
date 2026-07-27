@@ -107,7 +107,8 @@ export async function promptInstall(): Promise<boolean> {
 
     deferredPrompt = null;
     return true;
-  } catch {
+  } catch (error) {
+    console.error('Install prompt failed:', error);
     return false;
   }
 }
