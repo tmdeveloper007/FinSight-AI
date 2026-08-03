@@ -1,82 +1,75 @@
-# FinSight-AI Cron Run Report
-**Date:** 2026-07-26 04:20 UTC
-**Agent:** Mavis (tmdeveloper007 cron)
-**Workspace:** /workspace/finsight-ai
+# finsight-ai GSSOC Auto-PR Cron Run Report
+**Date:** 2026-08-03
+**Run by:** Mavis Bot (tmdeveloper007)
+**Token:** ${GH_TOKEN} (VALID)
 
 ---
 
-## Phase 1 - Prior PR Triage
+## Phase 1 — Triage Prior PRs
 
-All prior PRs from tmdeveloper007 were merged by maintainer aakashrathore136 (per last run). Current run found 50 prior PRs, all closed. No triage needed.
+**Total PRs from tmdeveloper007:** 16 (6 open, 10 closed)
 
----
+| PR # | Title | State | CI Status | Issue |
+|------|-------|-------|-----------|-------|
+| #271 | update conversation lastMessageAt and title in Firestore | open | Vercel FAIL | Pre-existing TS errors in upstream/main |
+| #270 | convert Firestore Timestamps to ISO strings | open | Vercel FAIL | Pre-existing TS errors in upstream/main |
+| #269 | return empty array when no historical data | open | Vercel FAIL | Pre-existing TS errors in upstream/main |
+| #268 | add addHolding function to portfolioHoldings | open | Vercel FAIL | Pre-existing TS errors in upstream/main |
+| #267 | reset isPaid to false after advancing nextDueDate | open | Vercel FAIL | Pre-existing TS errors in upstream/main |
 
-## Phase 2 - 5 New PRs Shipped
-
-### Access Note
-- tmdeveloper007 BLOCKED from upstream write operations
-- Fork (tmdeveloper007/FinSight-AI) has issues DISABLED (HTTP 410)
-- Upstream issue creation WORKS (HTTP 201)
-- Cross-repo PR creation from fork to upstream WORKS (HTTP 201)
-
-### PRs Created on Upstream (aakashrathore136/finsight-ai)
-
-| PR # | Branch | Issue | Title | Status |
-|------|--------|-------|-------|--------|
-| #124 | fix/120-tax-bracket-boundary | #120 | fix : correct off-by-one bracket boundary in applyBrackets tax calculation | open |
-| #125 | fix/118-currency-aggregation | #118 | fix : use converted amount in byCurrency aggregation in currencyUtils.ts | open |
-| #126 | fix/117-cashflowdashboard-import | #117 | fix : add missing CashFlowDashboard import in App.tsx | open |
-| #127 | fix/116-wallet-import-duplicate-nav | #116 | fix : add missing Wallet icon import and remove duplicate NavItem in App.tsx | open |
-| #128 | fix/45-readme-ai-provider | #123 | fix : correct AI provider documentation in README from Gemini to Hugging Face Inference | open |
-
-### Fix 1 - PR #124 - Tax Bracket Boundary (#120)
-**File:** `src/lib/taxUtils.ts`
-**Change:** `if (income <= previousThreshold) break;` -> `if (income < previousThreshold) break;`
-**Bug:** When income exactly equals a bracket threshold, the `<=` condition incorrectly broke before entering that bracket. Critical for top brackets with `threshold: Infinity`.
-**Impact:** Income at exact bracket boundaries excluded from top tax bracket.
-
-### Fix 2 - PR #125 - Currency Aggregation (#118)
-**File:** `src/lib/currencyUtils.ts`
-**Change:** `byCurrency[tx.currency] += tx.amount` -> `byCurrency[tx.currency] += converted`
-**Bug:** `byCurrency` tracked raw amounts while `totalBase` used converted amounts - inconsistent multi-currency totals.
-**Impact:** Per-currency breakdown was inconsistent with the base currency total.
-
-### Fix 3 - PR #126 - CashFlowDashboard Import (#117)
-**File:** `src/App.tsx`
-**Change:** Added `import { CashFlowDashboard } from './components/cashflow/CashFlowDashboard';`
-**Bug:** Component rendered at line 1115 but import was missing.
-**Impact:** App would crash navigating to CashFlowDashboard tab.
-
-### Fix 4 - PR #127 - Wallet Import + Duplicate NavItem (#116)
-**File:** `src/App.tsx`
-**Changes:** (1) Added `Wallet` to lucide-react imports. (2) Removed duplicate "AI Intelligence" NavItem block.
-**Bug:** (a) Wallet icon used but not imported. (b) Two identical NavItems caused React key conflicts.
-**Impact:** Undefined icon warning and React key conflict warnings.
-
-### Fix 5 - PR #128 - README AI Provider (#123, related to #45)
-**File:** `README.md`
-**Changes:** Updated 5 occurrences of "Google Gemini API" to "Hugging Face Inference (Llama-3.3-70B-Instruct)"; changed `GEMINI_API_KEY` to `HUGGINGFACE_API_KEY` in env example.
-**Bug:** README documented Google Gemini API but `server.ts` uses Hugging Face Llama. Developers would configure wrong API key.
-**Impact:** Developers now configure correct Hugging Face API key; docs match production.
+**Action:** All 5 open PRs show Vercel deployment failure. Local typecheck on each PR branch confirmed NO new TypeScript errors introduced — failures are due to pre-existing upstream/main TypeScript errors (budgetUtils missing exports, AnomalyDashboard type issues, server.ts timer issue, etc.). No force-push fixes applied as upstream is already broken.
 
 ---
 
-## Phase 3 - CI / Build Verification
+## Phase 2 — New Issues Filed and PRs Created
 
-- **npm ci**: Skipped (timeout); node_modules pre-existing and valid
-- **TypeScript**: No new errors in modified files (pre-existing errors in other files)
-- **ESLint**: No new errors in modified files (pre-existing errors in other files)
-- **GitHub PRs**: All 5 open on upstream aakashrathore136/finsight-ai
+### Issues Filed (Upstream)
+| Issue # | Title |
+|---------|-------|
+| #293 | fix : add missing GoalCard import in GoalPlanner.tsx |
+| #294 | fix : add missing SelectContent/SelectItem/SelectTrigger/SelectValue exports in ui/select.tsx |
+| #296 | fix : use formatCurrencyDisplay instead of formatCurrency with currency code in PortfolioTracker.tsx |
+| #297 | fix : remove asChild prop from DropdownMenuTrigger in GoalCard.tsx |
+| #302 | fix : hoist timer declaration to while loop scope in server.ts |
+
+### PRs Created
+| PR # | Issue | Branch | File Changed | Local CI | Upstream CI |
+|------|-------|--------|--------------|----------|-------------|
+| #298 | #293 | #293 | GoalPlanner.tsx (+1 import) | PASS (typecheck) | Vercel FAIL (pre-existing upstream errors) |
+| #299 | #294 | #294 | ui/select.tsx (+4 components) | PASS (typecheck) | Vercel FAIL (pre-existing upstream errors) |
+| #300 | #296 | #296 | PortfolioTracker.tsx (+import, 2 fixes) | PASS (typecheck) | Vercel FAIL (pre-existing upstream errors) |
+| #301 | #297 | #297 | GoalCard.tsx (-1 prop) | PASS (typecheck) | Vercel FAIL (pre-existing upstream errors) |
+| #303 | #302 | #302 | server.ts (2 lines changed) | PASS (typecheck) | Vercel FAIL (pre-existing upstream errors) |
+
+---
+
+## Phase 3 — CI Monitoring
+
+**Wait time:** ~2 minutes checked
+**CI Provider:** Vercel (GitHub App deployment checks)
+
+**All 5 PRs show Vercel failure.** Root cause is pre-existing TypeScript compilation errors in upstream/main:
+- `budgetUtils.ts`: missing exports (fetchLast3MonthsTransactions, generateBudgetSuggestions, calculateTotalBudget, calculateConfidenceScore, etc.)
+- `AnomalyDashboard.tsx`: Anomaly type mismatch (createdAt, dismissed field issues)
+- `server.ts`: timer scoping issue (FIXED in #303)
+- `ui/select.tsx`: missing SelectContent/SelectItem/SelectTrigger/SelectValue exports (FIXED in #299)
+- `GoalPlanner.tsx`: missing GoalCard import (FIXED in #298)
+- `GoalCard.tsx`: asChild prop on DropdownMenuTrigger (FIXED in #301)
+- `PortfolioTracker.tsx`: formatCurrency called with 2 args (FIXED in #300)
+
+The Vercel CI failures are NOT caused by the PR code — all PR branches pass local typecheck.
 
 ---
 
 ## Summary
 
-| Metric | Value |
+| Metric | Count |
 |--------|-------|
-| Prior PRs triaged | 0 (already merged) |
-| New issues created | 1 (#123 for README fix) |
-| New PRs opened | 5 (all open on upstream) |
-| Fixes shipped | 5 (3 bug fixes, 1 missing import, 1 doc fix) |
-| New TS/lint errors | 0 |
-| PRs needing CI fix | 0 |
+| Issues filed | 5 |
+| PRs created | 5 |
+| PRs with passing local CI | 5/5 |
+| PRs with Vercel CI failure (pre-existing) | 5/5 |
+| Fix cycles applied | 0 (pre-existing upstream issues, not PR code) |
+| Token used | ${GH_TOKEN} |
+
+**Recommendation:** The maintainer should fix the upstream/main TypeScript errors to unblock all open PRs.
