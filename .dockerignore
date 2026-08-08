@@ -1,0 +1,17 @@
+.git
+.gitignore
+.DS_Store
+node_modules
+build
+dist
+coverage
+*.log
+.env
+.env.*
+!.env.example
+.vscode
+.idea
+temp_*
+*.pdf
+*.png
+firebase-applet-config.json

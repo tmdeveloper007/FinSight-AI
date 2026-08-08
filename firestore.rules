@@ -1,0 +1,206 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ----------------------------------------------------
+    // GLOBAL HELPERS
+    // ----------------------------------------------------
+    function isAuthenticated() { return request.auth != null; }
+    function isSignedIn() { return isAuthenticated() && request.auth.token.email_verified == true; }
+    function isOwner(ownerId) { return isSignedIn() && request.auth.uid == ownerId; }
+    function isAuthenticatedOwner(ownerId) { return isAuthenticated() && request.auth.uid == ownerId; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+    function isValidId(id) { return id is string && id.size() <= 128; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ----------------------------------------------------
+    // VALIDATION BLUEPRINTS
+    // ----------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+             data.email is string &&
+             data.role in ['junior_analyst', 'senior_pm', 'cro', 'compliance', 'admin'];
+    }
+
+    function isValidDocument(data) {
+      return data.keys().hasAll(['ownerId', 'fileName', 'fileUrl', 'status']) &&
+             data.ownerId == request.auth.uid &&
+             data.fileName is string && data.fileName.size() <= 255 &&
+             // Only allow https fileUrl so a stored link can never render as
+             // a javascript:/data: URL or a link-injection vector.
+             data.fileUrl is string && data.fileUrl.size() <= 2048 && data.fileUrl.startsWith('https://') &&
+             data.status in ['pending', 'processing', 'completed', 'failed'];
+    }
+
+    function isValidAnalysis(data) {
+      return data.keys().hasAll(['documentId', 'ownerId', 'riskLevel']) &&
+             data.ownerId == request.auth.uid &&
+             data.riskLevel in ['low', 'medium', 'high'];
+    }
+
+    function isValidFailedAnalysis(data) {
+      return data.keys().hasAll(['status', 'ownerId']) &&
+             data.status == 'failed' &&
+             data.ownerId == request.auth.uid;
+    }
+
+    // ----------------------------------------------------
+    // COLLECTION MATCHES
+    // ----------------------------------------------------
+    
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticatedOwner(userId) && isValidUser(incoming()) && incoming().role != 'admin';
+      allow update: if (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /privacy_settings/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /currencies/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow get: if isOwner(existing().userId) || isAdmin();
+      allow list: if request.auth != null && (request.query.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /documents/{docId} {
+      allow read: if isOwner(existing().ownerId) || isAdmin();
+      allow list: if request.auth != null && (request.query.ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidDocument(incoming());
+      allow update: if (isOwner(existing().ownerId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'riskLevel'])) || isAdmin();
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
+    }
+
+    match /documents/{docId}/analyses/{analysisId} {
+      // SECURITY: Only allow reading own analyses or if admin
+      // Prevents cross-user data leakage of financial AI analysis results
+      allow get: if isOwner(existing().ownerId) || isAdmin();
+      allow list: if request.auth != null && (request.query.ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidAnalysis(incoming());
+      allow update: if isAdmin();
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
+    }
+
+    match /analyses/{analysisId} {
+      // SECURITY: Per-user RLS for any top-level analyses collection
+      // Prevents unauthorized access to sensitive financial analysis data
+      allow read: if isOwner(existing().ownerId) || isAdmin();
+      allow create: if isSignedIn() && (isValidAnalysis(incoming()) || isValidFailedAnalysis(incoming()));
+      allow update: if isAdmin();
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
+    }
+
+    match /anomalies/{anomalyId} {
+      // SECURITY: Per-user RLS for the anomalies collection
+      // Prevents cross-user access to anomaly detection data
+      allow get: if isOwner(existing().userId);
+      allow list: if request.auth != null && (request.query.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /transactions/{txnId} {
+      // SECURITY: Per-user RLS for the transactions collection
+      // Prevents cross-user access to financial transaction data
+      allow get: if isOwner(existing().userId);
+      allow list: if request.auth != null && (request.query.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      // SECURITY: Audit entries are server-generated. The Firebase Admin SDK
+      // (service account) bypasses rules entirely, so allow create only for
+      // trusted admin-signed tokens and block every signed-in client from
+      // forging entries. The log is append-only: no updates or deletes.
+      allow read: if isAdmin();
+      allow create: if request.auth != null && request.auth.token.admin_sdk == true;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /goals/{goalId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /trend_analysis/{analysisId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /bills/{billId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /budget_categories/{categoryId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /budget_rollovers/{rolloverId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /challenges/{challengeId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /tax_estimates/{estimateId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    match /emergency_funds/{fundId} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow update: if isOwner(existing().userId) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+  }
+}

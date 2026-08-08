@@ -1,0 +1,283 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks, react-hooks/exhaustive-deps, react-hooks/immutability, react-hooks/purity, react-hooks/refs, react-hooks/set-state-in-effect */
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  doc,
+  writeBatch,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  type DocumentReference,
+} from "firebase/firestore";
+import { db, auth, handleFirestoreError, OperationType } from "./firebase";
+import { format } from "date-fns";
+
+export interface PrivacySettings {
+  dataCollection: boolean;
+  shareAnalytics: boolean;
+  personalizedAds: boolean;
+  thirdPartySharing: boolean;
+  retentionPeriod: "6months" | "1year" | "2years" | "indefinite";
+  exportFormat: "json" | "csv";
+  lastUpdated: string;
+  dataRetentionEnabled: boolean;
+  analyticsEnabled: boolean;
+  sharingEnabled: boolean;
+  mfaEnabled: boolean;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  action: string;
+  timestamp: Date;
+  details: string;
+  category: "auth" | "data" | "export" | "settings" | "deletion";
+}
+
+export const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
+  dataCollection: true,
+  shareAnalytics: true,
+  personalizedAds: false,
+  thirdPartySharing: false,
+  retentionPeriod: "1year",
+  exportFormat: "json",
+  lastUpdated: new Date().toISOString(),
+  dataRetentionEnabled: false,
+  analyticsEnabled: false,
+  sharingEnabled: false,
+  mfaEnabled: false,
+};
+
+export async function getPrivacySettings(
+  userId: string,
+): Promise<PrivacySettings> {
+  try {
+    const docRef = doc(db, "privacy_settings", userId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) return snap.data() as PrivacySettings;
+    await setDoc(docRef, DEFAULT_PRIVACY_SETTINGS);
+    return DEFAULT_PRIVACY_SETTINGS;
+  } catch (err) {
+    console.error("getPrivacySettings: failed to retrieve privacy settings", err);
+    return DEFAULT_PRIVACY_SETTINGS;
+  }
+}
+
+export async function updatePrivacySettings(
+  userId: string,
+  settings: Partial<PrivacySettings>,
+): Promise<void> {
+  try {
+    await setDoc(
+      doc(db, "privacy_settings", userId),
+      { ...settings, lastUpdated: new Date().toISOString() },
+      { merge: true },
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, "privacy_settings");
+  }
+}
+
+export async function fetchActivityLog(
+  userId: string,
+): Promise<ActivityLogEntry[]> {
+  try {
+    const logRef = collection(db, "activity_log");
+    const q = query(logRef, where("userId", "==", userId), orderBy("timestamp", "desc"));
+    const snapshot = await getDocs(q);
+    const entries: ActivityLogEntry[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      entries.push({
+        id: docSnap.id,
+        action: data.action || "",
+        timestamp: data.timestamp?.toDate?.() ?? new Date(),
+        details: data.details || "",
+        category: data.category || "data",
+      });
+    });
+    return entries;
+  } catch (err) {
+    console.error("fetchActivityLog: failed to retrieve activity log", err);
+    return [];
+  }
+}
+
+const USER_COLLECTIONS = [
+  "transactions",
+  "subscriptions",
+  "anomalies",
+  "reports",
+  "trend_analysis",
+  "goals",
+  "challenges",
+  "emergency_funds",
+  "health_scores",
+  "chat_conversations",
+  "chat_messages",
+  "budget_categories",
+  "budget_rollovers",
+  "portfolioHoldings",
+  "portfolioTransactions",
+  "portfolios",
+  "tax_estimates",
+];
+
+export async function exportUserData(
+  userId: string,
+): Promise<Record<string, any>> {
+  const data: Record<string, any> = {};
+  for (const colName of USER_COLLECTIONS) {
+    try {
+      const snap = await getDocs(
+        query(collection(db, colName), where("userId", "==", userId)),
+      );
+      data[colName] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (error) {
+      console.error('exportUserData: failed to fetch', colName, error);
+      data[colName] = [];
+    }
+  }
+  // documents are keyed by ownerId and keep their analyses as subcollections
+  try {
+    const docsSnap = await getDocs(
+      query(collection(db, "documents"), where("ownerId", "==", userId)),
+    );
+    const documents: Record<string, unknown>[] = [];
+    for (const d of docsSnap.docs) {
+      const entry: Record<string, unknown> = { id: d.id, ...d.data() };
+      try {
+        const analysesSnap = await getDocs(
+          query(
+            collection(db, "documents", d.id, "analyses"),
+            where("ownerId", "==", userId),
+          ),
+        );
+        entry.analyses = analysesSnap.docs.map((a) => ({
+          id: a.id,
+          ...a.data(),
+        }));
+      } catch (error) {
+        console.error('exportUserData: failed to fetch document analyses', error);
+        entry.analyses = [];
+      }
+      documents.push(entry);
+    }
+    data.documents = documents;
+  } catch (error) {
+    console.error('exportUserData: failed to fetch documents', error);
+    data.documents = [];
+  }
+  try {
+    data.profile = (await getDoc(doc(db, "users", userId))).data();
+  } catch (error) {
+    console.error('exportUserData: failed to fetch user profile', error);
+  }
+  return data;
+}
+
+const BATCH_SIZE = 500;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function deleteInBatches(refs: DocumentReference[]): Promise<void> {
+  for (const batchRefs of chunk(refs, BATCH_SIZE)) {
+    const batch = writeBatch(db);
+    batchRefs.forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+export async function deleteUserData(userId: string): Promise<void> {
+  // Write the deletion tombstone (users/<uid>.deletedAt) first so that
+  // onAuthStateChanged cannot resurrect the profile even if a later step fails.
+  const userRef = doc(db, "users", userId);
+  try {
+    const existing = await getDoc(userRef);
+    const profile = existing.exists() ? existing.data() : {};
+    await deleteDoc(userRef);
+    await setDoc(userRef, {
+      uid: userId,
+      email: profile.email ?? auth.currentUser?.email ?? "",
+      role:
+        profile.role && profile.role !== "admin"
+          ? profile.role
+          : "junior_analyst",
+      username: profile.username ?? "",
+      deletedAt: new Date().toISOString(),
+      deleted: true,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "users");
+    throw error;
+  }
+
+  const docRefs: DocumentReference[] = [];
+  for (const colName of USER_COLLECTIONS) {
+    try {
+      (
+        await getDocs(
+          query(collection(db, colName), where("userId", "==", userId)),
+        )
+      ).docs.forEach((d) => docRefs.push(d.ref));
+    } catch (error) {
+      console.error('deleteUserData: failed to delete', colName, error);
+    }
+  }
+  // documents are keyed by ownerId and keep their analyses as subcollections
+  try {
+    const docsSnap = await getDocs(
+      query(collection(db, "documents"), where("ownerId", "==", userId)),
+    );
+    for (const d of docsSnap.docs) {
+      const analysesSnap = await getDocs(
+        query(
+          collection(db, "documents", d.id, "analyses"),
+          where("ownerId", "==", userId),
+        ),
+      );
+      analysesSnap.docs.forEach((a) => docRefs.push(a.ref));
+      docRefs.push(d.ref);
+    }
+  } catch (error) {
+    console.error('deleteUserData: failed to delete documents', error);
+  }
+  // The users/<uid> doc must survive erasure: it is the deletion tombstone.
+  docRefs.push(doc(db, "privacy_settings", userId));
+  docRefs.push(doc(db, "currencies", userId));
+  try {
+    await deleteInBatches(docRefs);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, "userData");
+    throw error;
+  }
+}
+
+export function downloadJSON(data: Record<string, any>, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function formatDate(date: Date | string): string {
+  return format(date instanceof Date ? date : new Date(date), "PPpp");
+}
