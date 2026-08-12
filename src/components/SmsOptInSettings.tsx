@@ -7,8 +7,15 @@ export default function SmsOptInSettings() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  const validatePhone = (number: string): boolean => {
+    // Accepts formats: +1234567890, +1 (234) 567-8900, +44 20 7123 4567, etc.
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    const cleaned = number.replace(/[\s\-\(\)\.]/g, '');
+    return phoneRegex.test(cleaned);
+  };
+
   const handleSave = async () => {
-    if (enabled && phone.length < 10) {
+    if (enabled && !validatePhone(phone)) {
       setStatus('error');
       return;
     }
@@ -72,7 +79,7 @@ export default function SmsOptInSettings() {
                 }`}
               />
             </div>
-            {status === 'error' && <p className="text-xs text-red-500 mt-2">Please enter a valid phone number with country code.</p>}
+            {status === 'error' && <p className="text-xs text-red-500 mt-2">Please enter a valid phone number with country code (e.g. +1, +44).</p>}
           </div>
         )}
 
