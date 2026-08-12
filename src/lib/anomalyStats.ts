@@ -30,7 +30,8 @@ export const MIN_LARGE_TRANSACTION_SAMPLES = 4;
 
 export function calculateCategoryBaseline(
   transactions: Transaction[],
-): Map<string, CategoryBaseline> {
+): Map<string, CategoryBaseline> | null {
+  if (transactions.length === 0) return null;
   const grouped = new Map<string, Transaction[]>();
 
   transactions.forEach((transaction) => {
@@ -40,6 +41,7 @@ export function calculateCategoryBaseline(
 
   const baseline = new Map<string, CategoryBaseline>();
   grouped.forEach((items, category) => {
+    if (items.length === 0) return;
     const amounts = items.map((item) => Math.abs(item.amount));
     const mean =
       amounts.length > 0
