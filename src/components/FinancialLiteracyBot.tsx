@@ -7,6 +7,24 @@ interface ChatMessage {
   text: string;
 }
 
+const escapeHtml = (text: string): string => {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+};
+
+const renderMessage = (text: string): React.ReactNode => {
+  const escaped = escapeHtml(text);
+  return escaped.split('**').map((chunk, i) => 
+    i % 2 === 1 ? <strong key={i}>{chunk}</strong> : chunk
+  );
+};
+
 export default function FinancialLiteracyBot() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: 'msg-1', sender: 'bot', text: "Hi there! I'm FinBot, your personal financial tutor. Ask me about compound interest, taxes, or budgeting, and you might earn some Knowledge Points!" }
@@ -76,8 +94,8 @@ export default function FinancialLiteracyBot() {
                 ? 'bg-indigo-600 text-white rounded-tr-none' 
                 : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'
             }`}>
-              {/* Very basic markdown rendering for bold text ** */}
-              {msg.text.split('**').map((chunk, i) => i % 2 === 1 ? <strong key={i}>{chunk}</strong> : chunk)}
+                {/* XSS-safe markdown rendering for bold text ** */}
+              {renderMessage(msg.text)}
             </div>
           </div>
         ))}
