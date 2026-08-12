@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { OperationType, handleFirestoreError } from './firebase';
-import { toDate } from './utils';
+import { normalizeTransactionType, toDate } from './utils';
 import {
   format,
   startOfWeek,
@@ -88,7 +88,7 @@ export function formatMonthKey(date: Date): string {
 }
 
 export function formatWeekKey(date: Date): string {
-  return format(date, "yyyy-'W'II");
+  return format(date, "RRRR-'W'II");
 }
 
 export function formatPeriodLabel(period: string, type: TrendPeriod): string {
@@ -163,7 +163,7 @@ export function groupByCategoryAndPeriod(
         key: formatMonthKey(d),
         label: format(d, 'MMM yyyy'),
       }))
-    : eachWeekOfInterval({ start: config.startDate, end: config.endDate }).map((d) => ({
+    : eachWeekOfInterval({ start: config.startDate, end: config.endDate }, { weekStartsOn: 1 as const }).map((d) => ({
         key: formatWeekKey(d),
         label: format(d, "'W'II MMM"),
       }));
@@ -172,6 +172,7 @@ export function groupByCategoryAndPeriod(
   const totals: Record<string, number> = {};
 
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     const tDate = toDate(t.date) || new Date();
     const key = isMonth ? formatMonthKey(tDate) : formatWeekKey(tDate);
     if (!byCategory.has(t.category)) {
@@ -204,6 +205,7 @@ export function generateMonthlyComparison(
 
   const map = new Map<string, CategoryPeriodDatum>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     const tDate = toDate(t.date) || new Date();
     const key = formatMonthKey(tDate);
     if (!key.match(/^\d{4}-\d{2}$/)) return;
@@ -227,13 +229,14 @@ export function generateWeeklyComparison(
   start: Date,
   end: Date,
 ): { data: CategoryPeriodDatum[]; periods: { key: string; label: string }[] } {
-  const periods = eachWeekOfInterval({ start, end }).map((d) => ({
+  const periods = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 as const }).map((d) => ({
     key: formatWeekKey(d),
     label: format(d, "'W'II MMM"),
   }));
 
   const map = new Map<string, CategoryPeriodDatum>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     const tDate = toDate(t.date) || new Date();
     const key = formatWeekKey(tDate);
     if (!map.has(t.category)) {
@@ -263,6 +266,7 @@ export function calculateCategoryDistribution(
 ): PieDatum[] {
   const totals = new Map<string, number>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     if (filterCategory && t.category !== filterCategory) return;
     totals.set(t.category, (totals.get(t.category) || 0) + Math.abs(t.amount));
   });
@@ -289,6 +293,7 @@ export function generateTrendLines(
 
   const categories = new Set<string>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     if (filterCategory && t.category !== filterCategory) return;
     categories.add(t.category);
   });
@@ -296,6 +301,7 @@ export function generateTrendLines(
   const matrix = new Map<string, Map<string, number>>();
   periods.forEach((p) => matrix.set(p.key, new Map()));
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== 'expense') return;
     if (filterCategory && t.category !== filterCategory) return;
     const tDate = toDate(t.date) || new Date();
     const key = formatMonthKey(tDate);
@@ -321,13 +327,15 @@ export function buildPeriodConfig(
   customEnd?: Date,
 ): PeriodConfig {
   switch (type) {
-    case 'week':
+    case 'week': {
+      const weekStart = startOfWeek(now, { weekStartsOn: 1 as const });
       return {
         type,
-        startDate: startOfWeek(now),
-        endDate: endOfWeek(now),
-        label: `Week of ${format(startOfWeek(now), 'MMM d')}`,
+        startDate: weekStart,
+        endDate: endOfWeek(now, { weekStartsOn: 1 as const }),
+        label: `Week of ${format(weekStart, 'MMM d')}`,
       };
+    }
     case 'quarter': {
       const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
       const qStart = startOfMonth(new Date(now.getFullYear(), qStartMonth, 1));

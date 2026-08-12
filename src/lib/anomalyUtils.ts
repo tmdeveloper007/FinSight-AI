@@ -15,7 +15,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "./firebase";
-import { formatCurrency, toDate } from "./utils";
+import { formatCurrency, normalizeTransactionType, toDate } from "./utils";
 import { format, subMonths, startOfMonth } from "date-fns";
 import {
   calculateCategoryBaseline,
@@ -150,34 +150,56 @@ export function detectCategorySpikes(
 ): Array<{
   category: string;
   amount: number;
-  baseline: CategoryBaseline;
+  baseline: CategoryBaseline | null;
   transactions: Transaction[];
+  averageAllCategories: number;
 }> {
   const currentMonth = format(new Date(), "yyyy-MM");
   const byCategory = new Map<string, Transaction[]>();
 
   transactions.forEach((transaction) => {
+    if (normalizeTransactionType(transaction.type) !== "expense") return;
     const date = toDate(transaction.date) || new Date();
     if (format(date, "yyyy-MM") !== currentMonth) return;
     const category = transaction.category || "Other";
     byCategory.set(category, [...(byCategory.get(category) || []), transaction]);
   });
 
+  // Overall per-category average used as a sanity floor for categories with
+  // no prior baseline (i.e. brand-new spending categories).
+  const categoryAverages = Array.from(baseline.values())
+    .map((catBaseline) => {
+      const previousTotals = catBaseline.monthlyTotals.slice(0, -1);
+      return previousTotals.length > 0
+        ? previousTotals.reduce((sum, total) => sum + total, 0) / previousTotals.length
+        : 0;
+    })
+    .filter((avg) => avg > 0);
+  const averageAllCategories =
+    categoryAverages.length > 0
+      ? categoryAverages.reduce((sum, avg) => sum + avg, 0) / categoryAverages.length
+      : 0;
+
   return Array.from(byCategory.entries())
     .map(([category, items]) => {
-      const categoryBaseline = baseline.get(category);
+      const categoryBaseline = baseline.get(category) || null;
       const amount = items.reduce((sum, item) => sum + Math.abs(item.amount), 0);
-      return categoryBaseline
-        ? { category, amount, baseline: categoryBaseline, transactions: items }
-        : null;
+      return { category, amount, baseline: categoryBaseline, transactions: items, averageAllCategories };
     })
-    .filter((item): item is NonNullable<typeof item> => {
-      if (!item || item.baseline.monthlyTotals.length < 2) return false;
+    .filter((item) => {
+      if (!item.baseline) {
+        return averageAllCategories > 0 && item.amount > averageAllCategories * 2;
+      }
+      if (item.baseline.monthlyTotals.length < 2) return false;
       const previousTotals = item.baseline.monthlyTotals.slice(0, -1);
       const average =
         previousTotals.reduce((sum, total) => sum + total, 0) /
         previousTotals.length;
-      return average > 0 && item.amount > average * 1.5 && item.amount - average > 500;
+      return (
+        average > 0 &&
+        item.amount > average * 1.5 &&
+        item.amount - average > Math.max(20, average * 0.5)
+      );
     });
 }
 
@@ -227,6 +249,7 @@ export function detectAnomalies(
   const anomalies: Omit<Anomaly, "id" | "createdAt">[] = [];
   const categoryAverages = new Map<string, { total: number; count: number }>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== "expense") return;
     const cat = t.category || "Other";
     const existing = categoryAverages.get(cat) || { total: 0, count: 0 };
     existing.total += Math.abs(t.amount);
@@ -235,10 +258,15 @@ export function detectAnomalies(
   });
 
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== "expense") return;
     const cat = t.category || "Other";
     const avg = categoryAverages.get(cat);
     if (avg && avg.count > 1) {
-      const mean = avg.total / avg.count;
+      // Exclude the current transaction from the baseline so it cannot inflate the mean
+      const baselineCount = avg.count - 1;
+      const baselineTotal = avg.total - Math.abs(t.amount);
+      if (baselineTotal <= 0) return;
+      const mean = baselineTotal / baselineCount;
       const amount = Math.abs(t.amount);
       if (amount > mean * 3 && amount > 1000) {
         anomalies.push({
@@ -256,7 +284,7 @@ export function detectAnomalies(
             " expense of " +
             formatCurrency(amount) +
             " - " +
-            Math.round((amount / mean) * 100) +
+            Math.round(((amount - mean) / mean) * 100) +
             "% above average of " +
             formatCurrency(mean),
           date: t.date,
@@ -271,6 +299,7 @@ export function detectAnomalies(
   const lastMonth = format(subMonths(new Date(), 1), "yyyy-MM");
   const monthlySpend = new Map<string, Map<string, number>>();
   transactions.forEach((t) => {
+    if (normalizeTransactionType(t.type) !== "expense") return;
     const monthKey = format(
       toDate(t.date) || new Date(),
       "yyyy-MM",
@@ -286,10 +315,11 @@ export function detectAnomalies(
   if (thisMonthData && lastMonthData) {
     thisMonthData.forEach((amount, cat) => {
       const lastAmount = lastMonthData.get(cat) || 0;
+      const minDelta = Math.max(50, lastAmount * 0.5);
       if (
         lastAmount > 0 &&
         amount > lastAmount * 1.5 &&
-        amount - lastAmount > 5000
+        amount - lastAmount > minDelta
       ) {
         anomalies.push({
           userId: transactions[0]?.userId || "",
@@ -307,7 +337,7 @@ export function detectAnomalies(
             " this month vs " +
             formatCurrency(lastAmount) +
             " last month (" +
-            Math.round((amount / lastAmount) * 100) +
+            Math.round(((amount - lastAmount) / lastAmount) * 100) +
             "% increase)",
           date: new Date(),
           dismissed: false,
