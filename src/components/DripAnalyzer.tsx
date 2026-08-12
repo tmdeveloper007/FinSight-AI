@@ -47,27 +47,27 @@ export default function DripAnalyzer() {
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Initial Portfolio ($)</label>
             <input 
-              type="number"
+              type="number" min="0" max="100000000"
               value={params.principal}
-              onChange={(e) => setParams({...params, principal: Number(e.target.value)})}
+              onChange={(e) => setParams({...params, principal: Math.max(0, Number(e.target.value))})}
               className="w-full p-3 rounded-xl border border-slate-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Dividend Yield (%)</label>
             <input 
-              type="number" step="0.1"
+              type="number" step="0.1" min="0" max="100"
               value={params.dividendYield}
-              onChange={(e) => setParams({...params, dividendYield: Number(e.target.value)})}
+              onChange={(e) => setParams({...params, dividendYield: Math.min(100, Math.max(0, Number(e.target.value)))})}
               className="w-full p-3 rounded-xl border border-slate-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Stock Growth (%)</label>
             <input 
-              type="number" step="0.1"
+              type="number" step="0.1" min="-50" max="100"
               value={params.annualGrowth}
-              onChange={(e) => setParams({...params, annualGrowth: Number(e.target.value)})}
+              onChange={(e) => setParams({...params, annualGrowth: Math.min(100, Math.max(-50, Number(e.target.value)))})}
               className="w-full p-3 rounded-xl border border-slate-300 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
           </div>
