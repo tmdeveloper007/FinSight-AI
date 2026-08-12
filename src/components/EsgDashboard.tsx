@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Leaf, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
+type EsgRating = "Excellent" | "Average" | "Poor";
+
 interface HoldingEsg {
   ticker: string;
   name: string;
@@ -10,13 +12,15 @@ interface HoldingEsg {
   socialScore: number;
   governanceScore: number;
   controversyLevel: number;
-  rating: "Excellent" | "Average" | "Poor";
+  rating: EsgRating;
 }
+
+type EsgRating = "Excellent" | "Average" | "Poor";
 
 interface EsgPayload {
   holdings: HoldingEsg[];
   aggregateScore: number;
-  aggregateRating: string;
+  aggregateRating: EsgRating;
 }
 
 const COLORS = {
